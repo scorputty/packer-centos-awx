@@ -1,0 +1,74 @@
+{
+  "variables": {
+    "cloud_token": "{{env `ATLAS_TOKEN`}}",
+    "version": "7.4.{{timestamp}}",
+    "atlas_changelog": "{{env `ATLAS_CHANGELOG_AWX`}}"
+  },
+  "builders": [
+    {
+      "type": "virtualbox-iso",
+      "boot_wait": "5s",
+      "http_port_min": 10082,
+      "http_port_max": 10089,
+      "ssh_username": "vagrant",
+      "ssh_password": "vagrant",
+      "ssh_host_port_min": 2222,
+      "ssh_host_port_max": 2229,
+      "ssh_port": 22,
+      "ssh_wait_timeout": "1200s",
+      "disk_size": 51200,
+      "headless": false,
+      "http_directory": "http",
+      "iso_checksum": "bba314624956961a2ea31dd460cd860a77911c1e0a56e4820a12b9c5dad363f5",
+      "iso_checksum_type": "sha256",
+      "iso_urls": "http://mirror.1000mbps.com/centos/7/isos/x86_64/CentOS-7-x86_64-Minimal-1708.iso",
+      "boot_command": [
+        "<tab> text ks=http://{{ .HTTPIP }}:{{ .HTTPPort }}/ks.cfg<enter><wait>"
+      ],
+      "shutdown_command": "echo 'vagrant'|sudo -S /sbin/halt -h -p",
+      "guest_os_type": "RedHat_64",
+      "guest_additions_path": "VBoxGuestAdditions_{{.Version}}.iso",
+      "virtualbox_version_file": ".vbox_version",
+      "vm_name": "packer-centos-7-x86_64",
+      "vboxmanage": [
+        [
+          "modifyvm", "{{.Name}}", "--memory", "2048"
+        ],
+        [
+          "modifyvm", "{{.Name}}", "--cpus", "4"
+        ]
+      ]
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "ansible",
+      "playbook_file": "./ansible/site.yml",
+      "ansible_env_vars": [
+        "ANSIBLE_SSH_ARGS=''",
+        "ANSIBLE_SSH_PIPELINING=true"
+      ]
+    },
+    {
+      "type": "shell",
+      "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
+      "script": "scripts/cleanup.sh"
+    }
+  ],
+  "post-processors": [
+    [
+      {
+        "type": "vagrant",
+        "keep_input_artifact": true,
+        "output": "builds/{{.Provider}}-centos-7-awx.box"
+      },
+      {
+        "type": "vagrant-cloud",
+        "box_tag": "scorputty/centos-awx",
+        "access_token": "{{user `cloud_token`}}",
+        "version": "{{user `version`}}",
+        "version_description": "{{user `atlas_changelog`}}"
+      }
+    ]
+  ]
+}

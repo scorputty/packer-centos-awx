@@ -1,0 +1,168 @@
+---
+  # Install packages
+  - name: Get the current kernel release.
+    command: uname -r
+    changed_when: false
+    register: kernel_release
+
+  - name: Ensure necessary packages are installed.
+    yum: "name={{ item }} state=present"
+    with_items:
+      - bzip2
+      - cpp
+      - curl
+      - gcc
+      - "kernel-devel-{{ kernel_release.stdout }}"
+      - kernel-headers
+      - libselinux-python
+      - make
+      - net-tools
+      - NetworkManager
+      - ntp
+      - openssh-clients
+      - openssl-devel
+      - readline-devel
+      - rsync
+      - sudo
+      - vim
+      - wget
+      - yum-utils
+      - zlib-devel
+
+  # Install GuestAdditions
+  - name: Check if GuestAdditions are installed
+    command: lsmod
+    register: vboxguest_check
+
+  # - debug:
+  #     msg: "{{vboxguest_check}}"
+
+  - name: Install GuestAdditions
+    block:
+      - name: Get VirtualBox version.
+        shell: cat /home/vagrant/.vbox_version
+        register: virtualbox_version
+
+      # - debug:
+      #     msg: "{{virtualbox_version}}"
+
+      - name: Mount VirtualBox guest additions ISO.
+        mount:
+          name: /tmp/vbox
+          src: "/home/vagrant/VBoxGuestAdditions_{{ virtualbox_version.stdout }}.iso"
+          opts: loop
+          state: mounted
+          fstype: iso9660
+
+      - name: Run VirtualBox guest additions installation.
+        shell: sh /tmp/vbox/VBoxLinuxAdditions.run
+        failed_when: false
+
+      - name: Unmount VirtualBox guest additions ISO.
+        mount:
+          name: /tmp/vbox
+          src: "/home/vagrant/VBoxGuestAdditions_{{ virtualbox_version.stdout }}.iso"
+          state: absent
+          fstype: iso9660
+
+      - name: Delete VirtualBox guest additions ISO.
+        file:
+          path: "/home/vagrant/VBoxGuestAdditions_{{ virtualbox_version.stdout }}.iso"
+          state: absent
+    when: vboxguest_check.stdout.find('vboxguest') == -1
+
+  # Fixes
+  - name: Fix slow DNS (adapted from Bento).
+    lineinfile:
+      dest: /etc/sysconfig/network
+      regexp: '^RES_OPTIONS'
+      line: 'RES_OPTIONS="single-request-reopen"'
+      state: present
+
+  - name: Fixing ifcfg-lo errors network loopback
+    command: echo "NM_CONTROLLED=no" >>/etc/sysconfig/network-scripts/ifcfg-lo
+
+  - name: Remove RedHat interface persistence.
+    lineinfile:
+      dest: /etc/sysconfig/network-scripts/ifcfg-eth0
+      regexp: "{{ item }}"
+      state: absent
+    with_items:
+      - '^HWADDR'
+      - '^UUID'
+
+  - name: System tuning
+    shell: echo "vm.dirty_background_bytes=100000000" >> /etc/sysctl.conf
+
+  - name: Disable unnecessary services
+    systemd: name="{{ item }}" state=stopped enabled=no
+    with_items:
+      - kdump
+
+  - name: Restart network service (explicitly).
+    service: name=network state=restarted
+
+  # Setup time
+  - name: Set timezone
+    timezone:
+      name: "{{ timezone }}"
+
+  # Setup cronyd task
+  - name: Ensure ntp package is absent
+    package:
+      name: ntp
+      state: absent
+
+  - name: Update chrony.conf from template
+    template:
+      src: chrony.conf.j2
+      dest: "{{ chrony_config_path }}"
+      owner: root
+      group: root
+      mode: 0644
+      backup: yes
+    register: chrony_conf
+
+  - name: Ensure chrony service is started and enabled
+    service:
+      name: "chronyd"
+      enabled: yes
+      state: started
+
+  # SSH daemon configuration.
+  - name: Configure SSH daemon.
+    lineinfile:
+      dest: /etc/ssh/sshd_config
+      regexp: "{{ item.regexp }}"
+      line: "{{ item.line }}"
+      state: present
+    with_items:
+      - { regexp: '^UseDNS', line: 'UseDNS no' }
+      - { regexp: '^GSSAPIAuthentication', line: 'GSSAPIAuthentication no' }
+
+  # Vagrant SSH configuration.
+  - name: Get Vagrants public key.
+    authorized_key:
+      user: vagrant
+      key: https://raw.githubusercontent.com/mitchellh/vagrant/master/keys/vagrant.pub
+      validate_certs: no
+
+  # Cleanup tasks.
+  - name: Remove unneeded packages.
+    yum: "name={{ item }} state=absent"
+    with_items:
+      - "alsa-*"
+      - "iwl*firmware"
+      - "b43-openfwwf"
+      - "plymouth*"
+
+  # - name: Remove surplus kernels
+  #   command: package-cleanup -y --oldkernels --count=1
+
+  - name: Clean up yum.
+    command: yum clean all
+
+  - name: Remove files
+    file: name="{{ item }}" state=absent
+    with_items:
+      - /etc/udev/rules.d/70-persistent-net.rules
