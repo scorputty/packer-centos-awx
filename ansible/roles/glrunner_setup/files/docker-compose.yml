@@ -1,0 +1,56 @@
+#docker-compose run register-runner
+#docker-compose start or run runner
+#docker-compose run unregister-runner
+
+dind:
+  restart: always
+  privileged: true
+  volumes:
+  - /var/lib/docker
+  image: docker:17.09.0-ce-dind
+  command:
+  - --storage-driver=overlay2
+
+runner:
+  restart: always
+  image: gitlab/gitlab-runner:alpine
+  volumes:
+  - ./gitlab/runner:/etc/gitlab-runner:Z
+  - ./ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:Z
+  dns: DOCKER_DNS
+  environment:
+  - DOCKER_HOST=tcp://dind:2375
+
+register-runner:
+  restart: 'no'
+  image: gitlab/gitlab-runner:alpine
+  volumes:
+  - ./gitlab/runner:/etc/gitlab-runner:Z
+  - ./ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:Z
+  dns: DOCKER_DNS
+  command:
+  - register
+  - --non-interactive
+  - --locked=false
+  - --name=Sandbox USER
+  - --tag-list=sandbox,docker, USER
+  - --executor=docker
+  - --docker-image=alpine:latest
+  - --docker-volumes=/var/run/docker.sock:/var/run/docker.sock
+  environment:
+  - CI_SERVER_URL
+  - REGISTRATION_TOKEN
+
+unregister-runner:
+  restart: 'no'
+  image: gitlab/gitlab-runner:alpine
+  volumes:
+  - ./gitlab/runner:/etc/gitlab-runner:Z
+  - ./ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:Z
+  dns: DOCKER_DNS
+  command:
+  - unregister
+  - --name=Sandbox USER
+  environment:
+  - CI_SERVER_URL
+  - REGISTRATION_TOKEN

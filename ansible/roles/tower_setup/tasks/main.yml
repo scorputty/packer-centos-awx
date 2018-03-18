@@ -55,6 +55,12 @@
       dest: /usr/bin/docker-compose
       mode: 0755
 
+  - name: Get latest gitlab-runner from gitlab
+    get_url:
+      url: https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-linux-amd64
+      dest: /usr/bin/gitlab-runner
+      mode: 0755 
+
   - name: Clone awx from github
     git:
       repo: https://github.com/ansible/awx.git
