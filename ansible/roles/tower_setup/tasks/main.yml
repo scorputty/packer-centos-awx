@@ -1,26 +1,59 @@
 ---
 # tasks file for tower_setup
+  - name: Create docker group
+    group:
+      name: docker
+      state: present
+
+  - name: Add vagrant user to docker group
+    user:
+      name: vagrant
+      groups: docker
+      append: yes
+    sudo: true
+
   - name: Install repositories and prereqs
-    yum: name={{ item }} state=present
+    yum:
+      name: "{{ item }}"
+      state: present
     with_items:
       - epel-release
 
   - name: Install extra packages
-    yum: name={{ item }} state=latest
+    yum:
+      name: "{{ item }}"
+      state: present
     with_items:
+      - docker
       - python-pip
       - git
       - ansible
-      - docker
+
+    # Install latest version when no specific release is set.
+  - name: Upgrade latest pip, setuptools, docker, docker-py and docker-compose with pip
+    pip:
+      name: "{{ item.name }}"
+      state: latest
+    with_items:
+      - { name: pip, version: "latest", install: true }
+      - { name: setuptools, version: "latest", install: true }
+      - { name: docker, version: "latest", install: true }
+      - { name: docker-py, version: "latest", install: true }
+      - { name: ansible-tower-cli, version: "latest", install: true }
+    when: (item.version=="latest" and item.install)
+    ignore_errors: yes
 
   - name: Start docker
-    systemd: state=started name=docker enabled=true
+    systemd:
+      name: docker
+      state: started
+      enabled: true
 
-  - name: Install pip modules
-    pip: name={{ item }} state=latest
-    with_items:
-      - docker-py
-      - ansible-tower-cli
+  - name: Get latest docker-compose from docker
+    get_url:
+      url: https://github.com/docker/compose/releases/download/1.20.0-rc2/docker-compose-Linux-x86_64
+      dest: /usr/bin/docker-compose
+      mode: 0755
 
   - name: Clone awx from github
     git:
