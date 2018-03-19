@@ -4,4 +4,4 @@
   roles:
     - packer_centos
     - tower_setup
-    - glrunner_setup
+    # - glrunner_setup
